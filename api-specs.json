@@ -4,9 +4,9 @@
     "args": "--multiapi --fluent"
   },
   "applicationinsights/data-plane": {
-      "source": "specification/applicationinsights/data-plane/readme.md",
-      "args": "--payload-flattening-threshold=1"
-    },
+    "source": "specification/applicationinsights/data-plane/readme.md",
+    "args": "--payload-flattening-threshold=1"
+  },
   "appservice/resource-manager": {
     "source": "specification/web/resource-manager/readme.md",
     "args": "--multiapi --fluent",
@@ -88,6 +88,10 @@
       "\"moduleName\"": "\"IoTHub\""
     }
   },
+  "keyvault/data-plane": {
+    "source": "specification/keyvault/data-plane/readme.md",
+    "args": ""
+  },
   "keyvault/resource-manager": {
     "source": "specification/keyvault/resource-manager/readme.md",
     "args": "--multiapi --fluent"
@@ -151,8 +155,12 @@
     "args": "--multiapi --fluent",
     "fconfig": {
       "\"moduleName\"": "\"Redis\"",
-      "\"knownPlurals\"": ["\"redis\""],
-      "\"knownSingulars\"": ["\"redis\""]
+      "\"knownPlurals\"": [
+        "\"redis\""
+      ],
+      "\"knownSingulars\"": [
+        "\"redis\""
+      ]
     }
   },
   "resources/resource-manager": {
@@ -164,8 +172,12 @@
     "args": "--multiapi --fluent",
     "fconfig": {
       "\"moduleName\"": "\"SignalR\"",
-      "\"knownPlurals\"": ["\"signalr\""],
-      "\"knownSingulars\"": ["\"signalr\""]
+      "\"knownPlurals\"": [
+        "\"signalr\""
+      ],
+      "\"knownSingulars\"": [
+        "\"signalr\""
+      ]
     }
   },
   "sql/resource-manager": {
