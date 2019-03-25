@@ -115,7 +115,7 @@ public class ECKeyTest {
     
     @Test(expected = NoSuchAlgorithmException.class)
     public void testUnsupportedCurve() throws NoSuchAlgorithmException, InvalidAlgorithmParameterException, InstantiationException, IllegalAccessException, ClassNotFoundException {
-    	EcKey key = new EcKey("keyId", new JsonWebKeyCurveName("not an algo"));
+    	EcKey key = new EcKey("keyId", JsonWebKeyCurveName.fromString("not an algo"));
     }
     
     @Test

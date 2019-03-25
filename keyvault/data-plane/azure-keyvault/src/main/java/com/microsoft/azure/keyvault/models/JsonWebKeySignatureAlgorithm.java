@@ -8,8 +8,8 @@
 
 package com.microsoft.azure.keyvault.models;
 
+import com.azure.common.ExpandableStringEnum;
 import com.fasterxml.jackson.annotation.JsonCreator;
-import com.microsoft.rest.v3.ExpandableStringEnum;
 import java.util.Collection;
 
 /**
