@@ -3,6 +3,7 @@
 
 package com.microsoft.azure.keyvault.authentication;
 
+import java.net.URL;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -23,7 +24,7 @@ class ChallengeCache {
      *            the url that is used as a cache key.
      * @return cached value or null if value is not available.
      */
-    public Map<String, String> getCachedChallenge(HttpUrl url) {
+    public Map<String, String> getCachedChallenge(URL url) {
         if (url == null) {
             return null;
         }
@@ -40,7 +41,7 @@ class ChallengeCache {
      * @param challenge
      *            the challenge to cache.
      */
-    public void addCachedChallenge(HttpUrl url, Map<String, String> challenge) {
+    public void addCachedChallenge(URL url, Map<String, String> challenge) {
         if (url == null || challenge == null) {
             return;
         }
@@ -56,13 +57,13 @@ class ChallengeCache {
      *            the url to get the authority for.
      * @return the authority.
      */
-    public String getAuthority(HttpUrl url) {
-        String scheme = url.scheme();
-        String host = url.host();
-        int port = url.port();
+    public String getAuthority(URL url) {
+        String protocol = url.getProtocol();
+        String host = url.getHost();
+        int port = url.getPort();
         StringBuilder builder = new StringBuilder();
-        if (scheme != null) {
-            builder.append(scheme).append("://");
+        if (protocol != null) {
+            builder.append(protocol).append("://");
         }
         builder.append(host);
         if (port >= 0) {

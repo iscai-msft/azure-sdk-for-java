@@ -102,13 +102,14 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
 import reactor.core.publisher.Mono;
 import reactor.util.annotation.NonNull;
 
 /**
  * Initializes a new instance of the KeyVaultClientBase type.
  */
-public final class KeyVaultClientBaseImpl extends ServiceClient implements KeyVaultClientBase {
+public class KeyVaultClientBaseImpl extends ServiceClient implements KeyVaultClientBase {
     /**
      * The proxy service used to perform REST calls.
      */

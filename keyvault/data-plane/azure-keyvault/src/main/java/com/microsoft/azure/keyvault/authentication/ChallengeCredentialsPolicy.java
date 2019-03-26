@@ -1,38 +1,43 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
+/**
+ * Copyright (c) Microsoft Corporation. All rights reserved.
+ * Licensed under the MIT License. See License.txt in the project root for
+ * license information.
+ */
 
 package com.microsoft.azure.keyvault.authentication;
 
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Arrays;
-import java.util.List;
-import java.util.UUID;
-import java.security.KeyPairGenerator;
-import java.security.NoSuchAlgorithmException;
-
 import com.azure.common.credentials.ServiceClientCredentials;
+import com.azure.common.http.HttpPipelineCallContext;
+import com.azure.common.http.HttpPipelineNextPolicy;
+import com.azure.common.http.HttpRequest;
+import com.azure.common.http.HttpResponse;
+import com.azure.common.http.policy.ChallengeCache;
+import com.azure.common.http.policy.HttpPipelinePolicy;
 import com.microsoft.azure.keyvault.messagesecurity.HttpMessageSecurity;
 import com.microsoft.azure.keyvault.webkey.JsonWebKey;
-
-import okhttp3.HttpUrl;
-import okhttp3.Interceptor;
-import okhttp3.OkHttpClient;
+import okhttp3.MediaType;
 import okhttp3.Request;
 import okhttp3.RequestBody;
-import okhttp3.MediaType;
 import okhttp3.Response;
-
 import org.apache.commons.lang3.tuple.Pair;
+import reactor.core.publisher.Mono;
+
+import java.io.IOException;
+import java.net.URL;
+import java.security.KeyPairGenerator;
+import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 /**
- * An implementation of {@link ServiceClientCredentials} that supports automatic
- * bearer token refresh.
- *
+ * The Pipeline policy that adds credentials from ServiceClientCredentials to a request.
  */
-public abstract class KeyVaultCredentials implements ServiceClientCredentials {
-
+public class ChallengeCredentialsPolicy implements HttpPipelinePolicy {
+    private final ServiceClientCredentials credentials;
+    private final ChallengeCache cache = new ChallengeCache();
     private static final String WWW_AUTHENTICATE = "WWW-Authenticate";
     private static final String BEARER_TOKEP_REFIX = "Bearer ";
     private static final String CLIENT_ENCRYPTION_KEY_TYPE = "RSA";
@@ -42,54 +47,52 @@ public abstract class KeyVaultCredentials implements ServiceClientCredentials {
 
     private JsonWebKey clientEncryptionKey = null;
 
-    private final ChallengeCache cache = new ChallengeCache();
-
-    @Override
-    public String authorizationHeaderValue(String uri) throws IOException {
-
+    /**
+     * Creates SimpleCredentialsPolicy.
+     *
+     * @param credentials the credentials
+     */
+    public ChallengeCredentialsPolicy(ServiceClientCredentials credentials) {
+        this.credentials = credentials;
     }
 
     @Override
-    public void applyCredentialsFilter(OkHttpClient.Builder clientBuilder) {
+    public Mono<HttpResponse> process(HttpPipelineCallContext context, HttpPipelineNextPolicy next) {
+        try {
+            HttpRequest originalRequest = context.httpRequest();
+            URL url = originalRequest.url();
 
-        clientBuilder.addInterceptor(new Interceptor() {
+            Map<String, String> challengeMap = cache.getCachedChallenge(url);
+            HttpResponse response;
+            Pair<HttpRequest, HttpMessageSecurity> authenticatedRequestPair;
 
-            @Override
-            public Response intercept(Chain chain) throws IOException {
-
-                Request originalRequest = chain.request();
-                HttpUrl url = chain.request().url();
-
-                Map<String, String> challengeMap = cache.getCachedChallenge(url);
-                Response response;
-                Pair<Request, HttpMessageSecurity> authenticatedRequestPair;
-
-                if (challengeMap != null) {
-                    // challenge is cached, so there is no need to send an empty auth request.
-                    authenticatedRequestPair = buildAuthenticatedRequest(originalRequest, challengeMap);
-                } else {
-                    // challenge is new for the URL and is not cached,
-                    // so the request is sent out to get the challenges in
-                    // response
-                    response = chain.proceed(buildEmptyRequest(originalRequest));
-
-                    if (response.code() == 200) {
-                        return response;
-                    } else if (response.code() != 401) {
-                        throw new IOException("Unexpected unauthorized response.");
-                    }
-                    authenticatedRequestPair = buildAuthenticatedRequest(originalRequest, response);
-                }
-
-                response = chain.proceed(authenticatedRequestPair.getLeft());
+            if (challengeMap != null) {
+                // challenge is cached, so there is no need to send an empty auth request.
+                authenticatedRequestPair = buildAuthenticatedRequest(originalRequest, challengeMap);
+            } else {
+                // challenge is new for the URL and is not cached,
+                // so the request is sent out to get the challenges in
+                // response
+                response = next.process();
 
                 if (response.code() == 200) {
-                    return authenticatedRequestPair.getRight().unprotectResponse(response);
-                } else {
                     return response;
+                } else if (response.code() != 401) {
+                    throw new IOException("Unexpected unauthorized response.");
                 }
+                authenticatedRequestPair = buildAuthenticatedRequest(originalRequest, response);
             }
-        });
+
+            response = chain.proceed(authenticatedRequestPair.getLeft());
+
+            if (response.code() == 200) {
+                return authenticatedRequestPair.getRight().unprotectResponse(response);
+            } else {
+                return response;
+            }
+        } catch (IOException e) {
+            return Mono.error(e);
+        }
     }
 
     /**
@@ -102,8 +105,8 @@ public abstract class KeyVaultCredentials implements ServiceClientCredentials {
      * @return Pair of protected request and HttpMessageSecurity used for
      *         encryption.
      */
-    private Pair<Request, HttpMessageSecurity> buildAuthenticatedRequest(Request originalRequest,
-            Map<String, String> challengeMap) throws IOException {
+    private Pair<Request, HttpMessageSecurity> buildAuthenticatedRequest(HttpRequest originalRequest,
+                                                                         Map<String, String> challengeMap) throws IOException {
 
         Boolean supportsPop = supportsMessageProtection(originalRequest.url().toString(), challengeMap);
 
@@ -114,9 +117,9 @@ public abstract class KeyVaultCredentials implements ServiceClientCredentials {
                 final KeyPairGenerator generator = KeyPairGenerator.getInstance(CLIENT_ENCRYPTION_KEY_TYPE);
 
                 generator.initialize(CLIENT_ENCRYPTION_KEY_SIZE);
-                
-                this.clientEncryptionKey = JsonWebKey.fromRSA(generator.generateKeyPair()).withKid(UUID.randomUUID().toString());   
-                
+
+                this.clientEncryptionKey = JsonWebKey.fromRSA(generator.generateKeyPair()).withKid(UUID.randomUUID().toString());
+
             } catch (NoSuchAlgorithmException e) {
                 throw new RuntimeException(e);
             }
@@ -148,7 +151,7 @@ public abstract class KeyVaultCredentials implements ServiceClientCredentials {
      * @return Pair of protected request and HttpMessageSecurity used for
      *         encryption.
      */
-    private Pair<Request, HttpMessageSecurity> buildAuthenticatedRequest(Request originalRequest, Response response)
+    private Pair<Request, HttpMessageSecurity> buildAuthenticatedRequest(HttpRequest originalRequest, Response response)
             throws IOException {
         String authenticateHeader = response.header(WWW_AUTHENTICATE);
 
@@ -276,7 +279,7 @@ public abstract class KeyVaultCredentials implements ServiceClientCredentials {
      * @param resource
      *            Identifier of the target resource that is the recipient of the
      *            requested token, a URL.
-     * 
+     *
      * @param scope
      *            The scope of the authentication request.
      *
@@ -384,7 +387,7 @@ public abstract class KeyVaultCredentials implements ServiceClientCredentials {
      *         private String GetAccessToken(String authorization, String resource, boolean supportspop, JsonWebKey jwkPublic) {
      *             CloseableHttpClient httpclient = HttpClients.createDefault();
      *             HttpPost httppost = new HttpPost(authorization + "/oauth2/token");
-     * 
+     *
      *             // Request parameters and other properties.
      *             List&lt;NameValuePair&gt; params = new ArrayList&lt;NameValuePair&gt;(2);
      *             params.add(new BasicNameValuePair("resource", resource));

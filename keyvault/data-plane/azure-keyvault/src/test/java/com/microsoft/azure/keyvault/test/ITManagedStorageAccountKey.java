@@ -15,7 +15,6 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.EnumSet;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -23,6 +22,15 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import com.azure.common.credentials.ServiceClientCredentials;
+import com.azure.common.http.HttpPipeline;
+import com.azure.common.http.policy.SimpleCredentialsPolicy;
+import com.microsoft.azure.keyvault.implementation.KeyVaultClientBaseImpl;
+import com.microsoft.azure.keyvault.models.SecretListResult;
+import com.microsoft.azure.keyvault.models.StorageListResult;
+import com.microsoft.rest.LogLevel;
+import com.microsoft.rest.RestClient;
+import com.microsoft.rest.interceptors.LoggingInterceptor;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -39,15 +47,12 @@ import com.microsoft.azure.AzureEnvironment;
 import com.microsoft.azure.AzureResponseBuilder;
 import com.microsoft.azure.PagedList;
 import com.microsoft.azure.credentials.UserTokenCredentials;
-import com.microsoft.azure.keyvault.KeyVaultClient;
 import com.microsoft.azure.keyvault.authentication.KeyVaultCredentials;
 import com.microsoft.azure.keyvault.models.DeletedStorageBundle;
 import com.microsoft.azure.keyvault.models.SasDefinitionAttributes;
 import com.microsoft.azure.keyvault.models.SasDefinitionBundle;
 import com.microsoft.azure.keyvault.models.SasTokenType;
-import com.microsoft.azure.keyvault.models.SecretBundle;
 import com.microsoft.azure.keyvault.models.StorageAccountAttributes;
-import com.microsoft.azure.keyvault.models.StorageAccountItem;
 import com.microsoft.azure.keyvault.models.StorageBundle;
 import com.microsoft.azure.management.graphrbac.RoleDefinition;
 import com.microsoft.azure.management.graphrbac.implementation.GraphRbacManager;
@@ -69,10 +74,6 @@ import com.microsoft.azure.storage.SharedAccessAccountService;
 import com.microsoft.azure.storage.StorageCredentials;
 import com.microsoft.azure.storage.StorageCredentialsAccountAndKey;
 import com.microsoft.azure.storage.StorageException;
-import com.microsoft.rest.LogLevel;
-import com.microsoft.rest.RestClient;
-import com.microsoft.rest.credentials.ServiceClientCredentials;
-import com.microsoft.rest.interceptors.LoggingInterceptor;
 
 import okhttp3.Interceptor;
 import resources.MockUserTokenCredentials;
@@ -84,7 +85,7 @@ public class ITManagedStorageAccountKey {
     KeyVaultManager keyVaultManager;
     StorageManager storageManager;
     GraphRbacManager graphRbacManager;
-    protected static KeyVaultClient keyVaultClient;
+    protected static KeyVaultClientBaseImpl keyVaultClient;
 
     protected static final Region VAULT_REGION = Region.US_WEST_CENTRAL;
 
@@ -146,14 +147,14 @@ public class ITManagedStorageAccountKey {
             Interceptor interceptor = interceptorManager.initInterceptor();
             Interceptor loggingInterceptor = new LoggingInterceptor(LogLevel.BODY_AND_HEADERS);
 
-            RestClient keyVaultRestClient = new RestClient.Builder().withBaseUrl("https://{vaultBaseUrl}")
-                    .withSerializerAdapter(new AzureJacksonAdapter())
-                    .withResponseBuilderFactory(new AzureResponseBuilder.Factory()).withCredentials(keyVaultCredentials)
-                    .withLogLevel(LogLevel.NONE).withNetworkInterceptor(loggingInterceptor)
-                    .withNetworkInterceptor(interceptor).withInterceptor(new ResourceManagerThrottlingInterceptor())
-                    .build();
+//            RestClient keyVaultRestClient = new RestClient.Builder().withBaseUrl("https://{vaultBaseUrl}")
+//                    .withSerializerAdapter(new AzureJacksonAdapter())
+//                    .withResponseBuilderFactory(new AzureResponseBuilder.Factory()).withCredentials(keyVaultCredentials)
+//                    .withLogLevel(LogLevel.NONE).withNetworkInterceptor(loggingInterceptor)
+//                    .withNetworkInterceptor(interceptor).withInterceptor(new ResourceManagerThrottlingInterceptor())
+//                    .build();
 
-            keyVaultClient = new KeyVaultClient(keyVaultRestClient);
+            keyVaultClient = new KeyVaultClientBaseImpl(new HttpPipeline());
             credentials.withDefaultSubscriptionId(SUBSCRIPTION_ID);
             
             RestClient restClient = new RestClient.Builder().withBaseUrl("https://management.azure.com")
@@ -175,8 +176,8 @@ public class ITManagedStorageAccountKey {
         } else {
             RESOURCE_GROUP = ZERO_RESOURCE_GROUP;
             MSAK_USER_OID = ZERO_OID;
-            UserTokenCredentials credentials = new MockUserTokenCredentials();
-            keyVaultClient = new KeyVaultClient(buildPlaybackRestClient(keyVaultCredentials, playbackUri ));
+            com.microsoft.azure.credentials.UserTokenCredentials credentials = new MockUserTokenCredentials();
+            keyVaultClient = new KeyVaultClientBaseImpl(buildPlaybackRestClient(keyVaultCredentials, playbackUri ));
             RestClient restClient = buildPlaybackRestClient(credentials, playbackUri );
             
             initializeClients(restClient, ZERO_SUBSCRIPTION, ZERO_TENANT);
@@ -236,8 +237,8 @@ public class ITManagedStorageAccountKey {
         StorageAccountAttributes attributes = new StorageAccountAttributes().withEnabled(true);
         keyVaultClient.setStorageAccount(vaultUri, storageAccount.name(), storageAccount.id(), activeKeyName, true,
                 regenerationPeriod, attributes, null);
-        List<StorageAccountItem> msaList = keyVaultClient.getStorageAccounts(vaultUri);
-        Assert.assertEquals(1, msaList.size());
+        StorageListResult msaList = keyVaultClient.getStorageAccounts(vaultUri);
+        Assert.assertEquals(1, msaList.value().size());
 
         StorageBundle bundle = keyVaultClient.getStorageAccount(vaultUri, storageAccount.name());
         Assert.assertTrue(bundle.id().contains(storageAccount.name()));
@@ -351,7 +352,7 @@ public class ITManagedStorageAccountKey {
         // last slash)
         String sasSecretId = sasDefinition.secretId();
         String secretName = sasSecretId.substring(sasSecretId.lastIndexOf("/")).substring(1);
-        SecretBundle acctSasToken = keyVaultClient.getSecret(vaultUri, secretName);
+        SecretListResult acctSasToken = keyVaultClient.getSecretVersions(vaultUri, secretName);
         Assert.assertNotNull(acctSasToken);
 
         SasDefinitionBundle retrievedSasDefinition = keyVaultClient.getSasDefinition(vaultUri, storageAccount.name(),
@@ -507,13 +508,24 @@ public class ITManagedStorageAccountKey {
         return keyVaultRole;
     }
 
-    protected RestClient buildPlaybackRestClient(ServiceClientCredentials credentials, String baseUrl)
-            throws IOException {
+    protected RestClient buildPlaybackRestClient(com.microsoft.rest.credentials.ServiceClientCredentials credentials, String baseUrl)
+        throws IOException {
         return new RestClient.Builder().withBaseUrl(baseUrl)
                 .withSerializerAdapter(new AzureJacksonAdapter())
                 .withResponseBuilderFactory(new AzureResponseBuilder.Factory()).withCredentials(credentials)
                 .withLogLevel(LogLevel.NONE).withNetworkInterceptor(new LoggingInterceptor(LogLevel.BODY_AND_HEADERS))
                 .withNetworkInterceptor(interceptorManager.initInterceptor())
                 .withInterceptor(new ResourceManagerThrottlingInterceptor()).build();
+    }
+
+    protected HttpPipeline buildPlaybackRestClient(ServiceClientCredentials credentials, String baseUrl)
+            throws IOException {
+        return new HttpPipeline(new SimpleCredentialsPolicy(credentials));
+//        return new RestClient.Builder().withBaseUrl(baseUrl)
+//                .withSerializerAdapter(new AzureJacksonAdapter())
+//                .withResponseBuilderFactory(new AzureResponseBuilder.Factory()).withCredentials(credentials)
+//                .withLogLevel(LogLevel.NONE).withNetworkInterceptor(new LoggingInterceptor(LogLevel.BODY_AND_HEADERS))
+//                .withNetworkInterceptor(interceptorManager.initInterceptor())
+//                .withInterceptor(new ResourceManagerThrottlingInterceptor()).build();
     }
 }

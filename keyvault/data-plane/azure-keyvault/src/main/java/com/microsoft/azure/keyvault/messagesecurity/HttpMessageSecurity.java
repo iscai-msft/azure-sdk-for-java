@@ -12,6 +12,8 @@ import java.security.SecureRandom;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 
+import com.azure.common.http.HttpRequest;
+import com.azure.common.implementation.util.FluxUtil;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.commons.lang3.tuple.Triple;
 
@@ -151,17 +153,17 @@ public class HttpMessageSecurity {
      * 
      * @throws IOException throws IOException
      */
-    public Request protectRequest(Request request) throws IOException {
+    public HttpRequest protectRequest(HttpRequest request) throws IOException {
         try {
-            Request result = request.newBuilder().header(AUTHENTICATE, BEARER_TOKEP_REFIX + clientSecurityToken)
-                    .build();
+            HttpRequest result = new HttpRequest(request.httpMethod(), request.url(), request.headers(), request.body())
+                    .withHeader(AUTHENTICATE, BEARER_TOKEP_REFIX + clientSecurityToken);
 
             if (!supportsProtection()) {
                 return result;
             }
 
             Buffer buffer = new Buffer();
-            request.body().writeTo(buffer);
+            request.body().collwriteTo(buffer);
             String currentbody = buffer.readUtf8();
 
             if (currentbody == null || currentbody.length() == 0) {
