@@ -176,6 +176,10 @@
     "source": "specification/storage/resource-manager/readme.md",
     "args": "--multiapi --fluent"
   },
+  "storagesync/resource-manager": {
+    "source": "specification/storagesync/resource-manager/readme.md",
+    "args": "--multiapi --fluent"
+  },
   "streamanalytics/resource-manager": {
     "source": "specification/streamanalytics/resource-manager/readme.md",
     "args": "--multiapi --fluent",
